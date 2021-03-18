@@ -57,8 +57,7 @@ class RawReaderFT0 : public RawReaderFT0BaseNorm
   {
     if constexpr (sUseTrgInput) {
       getDigits(mVecDigits, mVecChannelData, mVecTriggerInput);
-    }
-    else {
+    } else {
       getDigits(mVecDigits, mVecChannelData);
     }
     LOG(INFO) << "Number of Digits: " << mVecDigits.size();
