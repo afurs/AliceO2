@@ -301,7 +301,7 @@ void DataRelayer::setOldestPossibleInput(TimesliceId proposed, ChannelIndex chan
       auto& element = mCache[si * mInputs.size() + mi];
       if (element.size() != 0) {
         if (input.lifetime != Lifetime::Condition && mCompletionPolicy.name != "internal-dpl-injected-dummy-sink") {
-          LOGP(error, "Dropping incomplete {} Lifetime::{} data in slot {} with timestamp {} < {} as it can never be completed.", DataSpecUtils::describe(input), (int)input.lifetime, si, timestamp.value, newOldest.timeslice.value);
+          LOGP(error, "Dropping incomplete {} Lifetime::{} data in slot {} with timestamp {} < {} as it can never be completed.", DataSpecUtils::describe(input), input.lifetime, si, timestamp.value, newOldest.timeslice.value);
         } else {
           LOGP(debug,
                "Silently dropping data {} in pipeline slot {} because it has timeslice {} < {} after receiving data from channel {}."
@@ -684,9 +684,9 @@ void DataRelayer::getReadyToProcess(std::vector<DataRelayer::RecordAction>& comp
     if (mCompletionPolicy.callback) {
       action = mCompletionPolicy.callback(span);
     } else if (mCompletionPolicy.callbackFull) {
-      action = mCompletionPolicy.callbackFull(span, mInputs);
+      action = mCompletionPolicy.callbackFull(span, mInputs, mContext);
     } else {
-      throw std::runtime_error("No completion policy found");
+      throw runtime_error_f("Completion police %s has no callback set", mCompletionPolicy.name.c_str());
     }
     auto& variables = mTimesliceIndex.getVariablesForSlot(slot);
     auto timeslice = std::get_if<uint64_t>(&variables.get(0));
@@ -901,7 +901,7 @@ void DataRelayer::publishMetrics()
     states.registerState(DataProcessingStates::StateSpec{
       .name = fmt::format("matcher_variables/{}", i),
       .stateId = static_cast<short>((short)(ProcessingStateId::CONTEXT_VARIABLES_BASE) + i),
-      .minPublishInterval = 200, // if we publish too often we flood the GUI and we are not able to read it in any case
+      .minPublishInterval = 500, // if we publish too often we flood the GUI and we are not able to read it in any case
       .sendInitialValue = true,
       .defaultEnabled = mContext.get<DriverConfig const>().driverHasGUI,
     });
@@ -911,7 +911,7 @@ void DataRelayer::publishMetrics()
     states.registerState(DataProcessingStates::StateSpec{
       .name = fmt::format("data_relayer/{}", ci),
       .stateId = static_cast<short>((short)(ProcessingStateId::DATA_RELAYER_BASE) + (short)ci),
-      .minPublishInterval = 500, // if we publish too often we flood the GUI and we are not able to read it in any case
+      .minPublishInterval = 800, // if we publish too often we flood the GUI and we are not able to read it in any case
       .sendInitialValue = true,
       .defaultEnabled = mContext.get<DriverConfig const>().driverHasGUI,
     });

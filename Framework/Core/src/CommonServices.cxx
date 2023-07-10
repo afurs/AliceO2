@@ -341,9 +341,8 @@ o2::framework::ServiceSpec CommonServices::dataSender()
   return ServiceSpec{
     .name = "datasender",
     .init = [](ServiceRegistryRef services, DeviceState&, fair::mq::ProgOptions& options) -> ServiceHandle {
-      auto& spec = services.get<DeviceSpec const>();
       return ServiceHandle{TypeIdHelpers::uniqueId<DataSender>(),
-                           new DataSender(services, spec.sendingPolicy)};
+                           new DataSender(services)};
     },
     .configure = noConfiguration(),
     .preProcessing = [](ProcessingContext&, void* service) {
@@ -482,6 +481,14 @@ o2::framework::ServiceSpec CommonServices::decongestionSpec()
       LOGP(debug, "Broadcasting oldest possible output {} due to {} ({})", oldestPossibleOutput.timeslice.value,
            oldestPossibleOutput.slot.index == -1 ? "channel" : "slot",
            oldestPossibleOutput.slot.index == -1 ? oldestPossibleOutput.channel.value : oldestPossibleOutput.slot.index);
+      if (decongestion->orderedCompletionPolicyActive) {
+        auto oldNextTimeslice = decongestion->nextTimeslice;
+        decongestion->nextTimeslice = std::max(decongestion->nextTimeslice, (int64_t)oldestPossibleOutput.timeslice.value);
+        if (oldNextTimeslice != decongestion->nextTimeslice) {
+          LOGP(error, "Some Lifetime::Timeframe data got dropped starting at {}", oldNextTimeslice);
+          timesliceIndex.rescan();
+        }
+      }
       DataProcessingHelpers::broadcastOldestPossibleTimeslice(proxy, oldestPossibleOutput.timeslice.value);
 
       for (int fi = 0; fi < proxy.getNumForwardChannels(); fi++) {
@@ -544,6 +551,14 @@ o2::framework::ServiceSpec CommonServices::decongestionSpec()
             }
           }
           decongestion.lastTimeslice = oldestPossibleOutput.timeslice.value;
+          if (decongestion.orderedCompletionPolicyActive) {
+            int64_t oldNextTimeslice = decongestion.nextTimeslice;
+            decongestion.nextTimeslice = std::max(decongestion.nextTimeslice, (int64_t)oldestPossibleOutput.timeslice.value);
+            if (oldNextTimeslice != decongestion.nextTimeslice) {
+              LOGP(error, "Some Lifetime::Timeframe data got dropped starting at {}", oldNextTimeslice);
+              timesliceIndex.rescan();
+            }
+          }
         },
         TimesliceId{oldestPossibleTimeslice}, -1); },
     .kind = ServiceKind::Serial};
@@ -611,7 +626,7 @@ auto sendRelayerMetrics(ServiceRegistryRef registry, DataProcessingStats& stats)
   int64_t totalBytesIn = 0;
   int64_t totalBytesOut = 0;
 
-  for (auto& channel : device->fChannels) {
+  for (auto& channel : device->GetChannels()) {
     totalBytesIn += channel.second[0].GetBytesRx();
     totalBytesOut += channel.second[0].GetBytesTx();
   }
@@ -693,6 +708,12 @@ o2::framework::ServiceSpec CommonServices::dataProcessingStats()
       using Kind = DataProcessingStats::Kind;
       using Scope = DataProcessingStats::Scope;
 
+#ifdef NDEBUG
+      bool enableDebugMetrics = false;
+#else
+      bool enableDebugMetrics = true;
+#endif
+
       std::vector<DataProcessingStats::MetricSpec> metrics = {
         MetricSpec{.name = "errors",
                    .metricId = (int)ProcessingStatsId::ERROR_COUNT,
@@ -734,6 +755,12 @@ o2::framework::ServiceSpec CommonServices::dataProcessingStats()
                    .metricId = (int)ProcessingStatsId::TOTAL_SIGUSR1,
                    .kind = Kind::UInt64,
                    .minPublishInterval = quickUpdateInterval},
+        MetricSpec{.name = "consumed-timeframes",
+                   .metricId = (int)ProcessingStatsId::CONSUMED_TIMEFRAMES,
+                   .kind = Kind::UInt64,
+                   .minPublishInterval = 0,
+                   .maxRefreshLatency = quickRefreshInterval,
+                   .sendInitialValue = true},
         MetricSpec{.name = "min_input_latency_ms",
                    .metricId = (int)ProcessingStatsId::LAST_MIN_LATENCY,
                    .kind = Kind::UInt64,
@@ -803,7 +830,79 @@ o2::framework::ServiceSpec CommonServices::dataProcessingStats()
         MetricSpec{.name = "dropped_computations", .metricId = static_cast<short>(ProcessingStatsId::DROPPED_COMPUTATIONS), .kind = Kind::UInt64, .minPublishInterval = quickUpdateInterval},
         MetricSpec{.name = "dropped_incoming_messages", .metricId = static_cast<short>(ProcessingStatsId::DROPPED_INCOMING_MESSAGES), .kind = Kind::UInt64, .minPublishInterval = quickUpdateInterval},
         MetricSpec{.name = "relayed_messages", .metricId = static_cast<short>(ProcessingStatsId::RELAYED_MESSAGES), .kind = Kind::UInt64, .minPublishInterval = quickUpdateInterval},
-      };
+        MetricSpec{.name = "arrow-bytes-destroyed",
+                   .metricId = static_cast<short>(ProcessingStatsId::ARROW_BYTES_DESTROYED),
+                   .kind = Kind::UInt64,
+                   .scope = Scope::DPL,
+                   .minPublishInterval = 0,
+                   .maxRefreshLatency = 10000,
+                   .sendInitialValue = true},
+        MetricSpec{.name = "arrow-messages-destroyed",
+                   .metricId = static_cast<short>(ProcessingStatsId::ARROW_MESSAGES_DESTROYED),
+                   .kind = Kind::UInt64,
+                   .scope = Scope::DPL,
+                   .minPublishInterval = 0,
+                   .maxRefreshLatency = 10000,
+                   .sendInitialValue = true},
+        MetricSpec{.name = "arrow-bytes-created",
+                   .metricId = static_cast<short>(ProcessingStatsId::ARROW_BYTES_CREATED),
+                   .kind = Kind::UInt64,
+                   .scope = Scope::DPL,
+                   .minPublishInterval = 0,
+                   .maxRefreshLatency = 10000,
+                   .sendInitialValue = true},
+        MetricSpec{.name = "arrow-messages-created",
+                   .metricId = static_cast<short>(ProcessingStatsId::ARROW_MESSAGES_CREATED),
+                   .kind = Kind::UInt64,
+                   .scope = Scope::DPL,
+                   .minPublishInterval = 0,
+                   .maxRefreshLatency = 10000,
+                   .sendInitialValue = true},
+        MetricSpec{.name = "arrow-bytes-expired",
+                   .metricId = static_cast<short>(ProcessingStatsId::ARROW_BYTES_EXPIRED),
+                   .kind = Kind::UInt64,
+                   .scope = Scope::DPL,
+                   .minPublishInterval = 0,
+                   .maxRefreshLatency = 10000,
+                   .sendInitialValue = true},
+        MetricSpec{.name = "shm-offer-bytes-consumed",
+                   .metricId = static_cast<short>(ProcessingStatsId::SHM_OFFER_BYTES_CONSUMED),
+                   .kind = Kind::UInt64,
+                   .scope = Scope::DPL,
+                   .minPublishInterval = 0,
+                   .maxRefreshLatency = 10000,
+                   .sendInitialValue = true},
+        MetricSpec{.name = "resources-missing",
+                   .enabled = enableDebugMetrics,
+                   .metricId = static_cast<short>(ProcessingStatsId::RESOURCES_MISSING),
+                   .kind = Kind::UInt64,
+                   .scope = Scope::DPL,
+                   .minPublishInterval = 1000,
+                   .maxRefreshLatency = 1000,
+                   .sendInitialValue = true},
+        MetricSpec{.name = "resources-insufficient",
+                   .enabled = enableDebugMetrics,
+                   .metricId = static_cast<short>(ProcessingStatsId::RESOURCES_INSUFFICIENT),
+                   .kind = Kind::UInt64,
+                   .scope = Scope::DPL,
+                   .minPublishInterval = 1000,
+                   .maxRefreshLatency = 1000,
+                   .sendInitialValue = true},
+        MetricSpec{.name = "resources-satisfactory",
+                   .enabled = enableDebugMetrics,
+                   .metricId = static_cast<short>(ProcessingStatsId::RESOURCES_SATISFACTORY),
+                   .kind = Kind::UInt64,
+                   .scope = Scope::DPL,
+                   .minPublishInterval = 1000,
+                   .maxRefreshLatency = 1000,
+                   .sendInitialValue = true},
+        MetricSpec{.name = "resource-offer-expired",
+                   .metricId = static_cast<short>(ProcessingStatsId::RESOURCE_OFFER_EXPIRED),
+                   .kind = Kind::UInt64,
+                   .scope = Scope::DPL,
+                   .minPublishInterval = 0,
+                   .maxRefreshLatency = 10000,
+                   .sendInitialValue = true}};
 
       for (auto& metric : metrics) {
         stats->registerMetric(metric);
@@ -812,9 +911,14 @@ o2::framework::ServiceSpec CommonServices::dataProcessingStats()
       return ServiceHandle{TypeIdHelpers::uniqueId<DataProcessingStats>(), stats};
     },
     .configure = noConfiguration(),
+    .preProcessing = [](ProcessingContext& context, void* service) {
+      auto* stats = (DataProcessingStats*)service;
+      flushMetrics(context.services(), *stats);
+    },
     .postProcessing = [](ProcessingContext& context, void* service) {
       auto* stats = (DataProcessingStats*)service;
-      stats->updateStats({(short)ProcessingStatsId::PERFORMED_COMPUTATIONS, DataProcessingStats::Op::Add, 1}); },
+      stats->updateStats({(short)ProcessingStatsId::PERFORMED_COMPUTATIONS, DataProcessingStats::Op::Add, 1});
+      flushMetrics(context.services(), *stats); },
     .preDangling = [](DanglingContext& context, void* service) {
        auto* stats = (DataProcessingStats*)service;
        sendRelayerMetrics(context.services(), *stats);
@@ -827,6 +931,12 @@ o2::framework::ServiceSpec CommonServices::dataProcessingStats()
       auto* stats = (DataProcessingStats*)service;
       sendRelayerMetrics(context.services(), *stats);
       flushMetrics(context.services(), *stats); },
+    .postDispatching = [](ProcessingContext& context, void* service) {
+      auto* stats = (DataProcessingStats*)service;
+      flushMetrics(context.services(), *stats); },
+    .preLoop = [](ServiceRegistryRef ref, void* service) {
+      auto* stats = (DataProcessingStats*)service;
+      flushMetrics(ref, *stats); },
     .kind = ServiceKind::Serial};
 }
 
@@ -948,7 +1058,7 @@ o2::framework::ServiceSpec CommonServices::dataAllocatorSpec()
 }
 
 /// Split a string into a vector of strings using : as a separator.
-std::vector<ServiceSpec> CommonServices::defaultServices(int numThreads)
+std::vector<ServiceSpec> CommonServices::defaultServices(std::string extraPlugins, int numThreads)
 {
   std::vector<ServiceSpec> specs{
     dataProcessorContextSpec(),
@@ -971,16 +1081,22 @@ std::vector<ServiceSpec> CommonServices::defaultServices(int numThreads)
     CommonMessageBackends::fairMQDeviceProxy(),
     dataSender(),
     objectCache(),
-    ccdbSupportSpec(),
-    ArrowSupport::arrowBackendSpec(),
-    CommonMessageBackends::fairMQBackendSpec(),
-    CommonMessageBackends::stringBackendSpec(),
-    decongestionSpec()};
+    ccdbSupportSpec()};
 
-  std::string loadableServicesStr;
-  // Do not load InfoLogger by default if we are not at P2.
   DeploymentMode deploymentMode = DefaultsHelpers::deploymentMode();
-  if (deploymentMode == DeploymentMode::OnlineDDS || deploymentMode == DeploymentMode::OnlineECS) {
+  if (deploymentMode != DeploymentMode::OnlineDDS && deploymentMode != DeploymentMode::OnlineECS && deploymentMode != DeploymentMode::OnlineAUX) {
+    specs.push_back(ArrowSupport::arrowBackendSpec());
+  }
+  specs.push_back(CommonMessageBackends::fairMQBackendSpec());
+  specs.push_back(CommonMessageBackends::stringBackendSpec());
+  specs.push_back(decongestionSpec());
+
+  std::string loadableServicesStr = extraPlugins;
+  // Do not load InfoLogger by default if we are not at P2.
+  if (deploymentMode == DeploymentMode::OnlineDDS || deploymentMode == DeploymentMode::OnlineECS || deploymentMode == DeploymentMode::OnlineAUX) {
+    if (loadableServicesStr.empty() == false) {
+      loadableServicesStr += ",";
+    }
     loadableServicesStr += "O2FrameworkDataTakingSupport:InfoLoggerContext,O2FrameworkDataTakingSupport:InfoLogger";
   }
   // Load plugins depending on the environment

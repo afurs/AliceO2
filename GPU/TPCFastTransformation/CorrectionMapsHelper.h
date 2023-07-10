@@ -64,21 +64,32 @@ class CorrectionMapsHelper
   void setCorrMap(GPUCA_NAMESPACE::gpu::TPCFastTransform* m);
   void setCorrMapRef(GPUCA_NAMESPACE::gpu::TPCFastTransform* m);
   void reportScaling();
-  void setInstLumi(float v)
+  void setInstLumi(float v, bool report = true)
   {
     if (v != mInstLumi) {
-      setUpdatedLumi();
       mInstLumi = v;
-      mLumiScale = mMeanLumi ? mInstLumi / mMeanLumi : 0.f;
-      reportScaling();
+      updateLumiScale(report);
     }
   }
-  void setMeanLumi(float v)
+
+  void setMeanLumi(float v, bool report = true)
   {
     if (v != mMeanLumi) {
-      setUpdatedLumi();
       mMeanLumi = v;
+      updateLumiScale(report);
+    }
+  }
+
+  void updateLumiScale(bool report = true)
+  {
+    if (mMeanLumi < 0.f || mInstLumi < 0.f) {
+      mLumiScale = -1.f;
+    } else {
       mLumiScale = mMeanLumi ? mInstLumi / mMeanLumi : 0.f;
+    }
+    setUpdatedLumi();
+    if (report) {
+      reportScaling();
     }
   }
 
@@ -87,9 +98,9 @@ class CorrectionMapsHelper
   GPUd() float getLumiScale() const { return mLumiScale; }
 
   bool isUpdated() const { return mUpdatedFlags != 0; }
-  bool isUpdatedMap() const { return (mUpdatedFlags & UpdateFlags::MapBit) == 0; }
-  bool isUpdatedMapRef() const { return (mUpdatedFlags & UpdateFlags::MapRefBit) == 0; }
-  bool isUpdatedLumi() const { return (mUpdatedFlags & UpdateFlags::LumiBit) == 0; }
+  bool isUpdatedMap() const { return (mUpdatedFlags & UpdateFlags::MapBit) != 0; }
+  bool isUpdatedMapRef() const { return (mUpdatedFlags & UpdateFlags::MapRefBit) != 0; }
+  bool isUpdatedLumi() const { return (mUpdatedFlags & UpdateFlags::LumiBit) != 0; }
   void setUpdatedMap() { mUpdatedFlags |= UpdateFlags::MapBit; }
   void setUpdatedMapRef() { mUpdatedFlags |= UpdateFlags::MapRefBit; }
   void setUpdatedLumi() { mUpdatedFlags |= UpdateFlags::LumiBit; }
@@ -109,6 +120,8 @@ class CorrectionMapsHelper
 
   void setInstLumiOverride(float f) { mInstLumiOverride = f; }
   float getInstLumiOverride() const { return mInstLumiOverride; }
+
+  int getUpdateFlags() const { return mUpdatedFlags; }
 
  protected:
   enum UpdateFlags { MapBit = 0x1,
