@@ -1722,8 +1722,11 @@ std::tuple<typename Cs::type...> getRowData(arrow::Table* table, T rowIterator, 
       return (*mColumnIterator & (static_cast<type>(1) << bit)) >> bit;                                                                                                           \
     }                                                                                                                                                                             \
   };                                                                                                                                                                              \
-  static const o2::framework::expressions::BindingNode _Getter_ { _Label_, typeid(_Name_).hash_code(),                                                                            \
-                                                                  o2::framework::expressions::selectArrowType<MAKEINT(_Size_)>() }
+  static const o2::framework::expressions::BindingNode _Getter_                                                                                                                   \
+  {                                                                                                                                                                               \
+    _Label_, typeid(_Name_).hash_code(),                                                                                                                                          \
+      o2::framework::expressions::selectArrowType<MAKEINT(_Size_)>()                                                                                                              \
+  }
 
 #define DECLARE_SOA_BITMAP_COLUMN(_Name_, _Getter_, _Size_) \
   DECLARE_SOA_BITMAP_COLUMN_FULL(_Name_, _Getter_, _Size_, "f" #_Name_)
@@ -1987,8 +1990,14 @@ std::tuple<typename Cs::type...> getRowData(arrow::Table* table, T rowIterator, 
       this->mBinding = current;                                                                  \
       return true;                                                                               \
     }                                                                                            \
-    binding_t const* getCurrent() const { return static_cast<binding_t const*>(mBinding); }      \
-    void const* getCurrentRaw() const { return mBinding; }                                       \
+    binding_t const* getCurrent() const                                                          \
+    {                                                                                            \
+      return static_cast<binding_t const*>(mBinding);                                            \
+    }                                                                                            \
+    void const* getCurrentRaw() const                                                            \
+    {                                                                                            \
+      return mBinding;                                                                           \
+    }                                                                                            \
     void const* mBinding = nullptr;                                                              \
   };
 
