@@ -98,29 +98,49 @@ void CollisionTimeRecoTask::FinishTask()
   // finalize digitization, if needed, flash remaining digits
   // if (!mContinuous)   return;
 }
+void CollisionTimeRecoTask::print() const
+{
+  LOG(info) << "=======Printing stats===================================";
+  for(int iCh = 0;iCh<NCHANNELS;iCh++) {
+    LOG(info) << ">>>>>>>>>>>>>>>>>>>>>>>";
+    LOG(info) << "ChannelID: " << iCh;
+    LOG(info) << "Bad fit stats: " << mBadFitStat[iCh];
+    LOG(info) << "Medium fit stats: " << mMediumFitStat[iCh];
+    LOG(info) << "Good fit stats: " << mGoodFitStat[iCh];
+    LOG(info) << ">>>>>>>>>>>>>>>>>>>>>>>";
+  }
+  LOG(info) << "========================================================";
 
+  
+
+}
 float CollisionTimeRecoTask::getTimeInPS(const o2::ft0::ChannelData& channelData)
 {
   // Getting time offset
   float offsetChannel{0};
+  const auto &chID = channelData.ChId;
   if (mTimeCalibObject) {
     // Temporary, will be changed to status bit checking
     // Check statistics
-    const auto& stat = mTimeCalibObject->mTime[channelData.ChId].mStat;
+    const auto& stat = mTimeCalibObject->mTime[chID].mStat;
     const bool isEnoughStat = stat > CalibParam::Instance().mMaxEntriesThreshold;
     const bool isNotGoogStat = stat > CalibParam::Instance().mMinEntriesThreshold && !isEnoughStat;
     // Check fit quality
-    const auto& meanGaus = mTimeCalibObject->mTime[channelData.ChId].mGausMean;
-    const auto& meanHist = mTimeCalibObject->mTime[channelData.ChId].mStatMean;
-    const auto& sigmaGaus = mTimeCalibObject->mTime[channelData.ChId].mGausRMS;
-    const auto& rmsHist = mTimeCalibObject->mTime[channelData.ChId].mStatRMS;
-    const bool isGoodFitResult = (mTimeCalibObject->mTime[channelData.ChId].mStatusBits & 1) > 0;
+    const auto& meanGaus = mTimeCalibObject->mTime[chID].mGausMean;
+    const auto& meanHist = mTimeCalibObject->mTime[chID].mStatMean;
+    const auto& sigmaGaus = mTimeCalibObject->mTime[chID].mGausRMS;
+    const auto& rmsHist = mTimeCalibObject->mTime[chID].mStatRMS;
+    const bool isGoodFitResult = (mTimeCalibObject->mTime[chID].mStatusBits & 1) > 0;
     const bool isBadFit = std::abs(meanGaus - meanHist) > CalibParam::Instance().mMaxDiffMean || rmsHist < CalibParam::Instance().mMinRMS || sigmaGaus > CalibParam::Instance().mMaxSigma;
-
     if (isEnoughStat && isGoodFitResult && !isBadFit) {
       offsetChannel = meanGaus;
+      mGoodFitStat[chID] ++;
     } else if ((isNotGoogStat || isEnoughStat) && isBadFit) {
       offsetChannel = meanHist;
+      mMediumFitStat[chID] ++;
+    }
+    else {
+      mBadFitStat[chID] ++;
     }
   }
   // Getting slewing offset

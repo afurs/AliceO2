@@ -15,7 +15,7 @@
 #include <array>
 #include "Rtypes.h"
 #include "FT0Base/Geometry.h"
-
+#include <Framework/Logger.h>
 namespace o2::ft0
 {
 
@@ -28,6 +28,17 @@ struct SpectraInfoObject {
   float mStatRMS{};       // Spectra RMS
   float mStat{};          // Statistic
   uint32_t mStatusBits{}; // Status bits for extra info
+  void print() const
+  {
+    LOG(info) << "mGausMean: " << mGausMean;
+    LOG(info) << "mGausRMS: " << mGausRMS;
+    LOG(info) << "mGausConstant: " << mGausConstant;
+    LOG(info) << "mFitChi2: " << mFitChi2;
+    LOG(info) << "mStatMean: " << mStatMean;
+    LOG(info) << "mStatRMS: " << mStatRMS;
+    LOG(info) << "mStat: " << mStat;
+
+  }
   ClassDefNV(SpectraInfoObject, 1);
 };
 

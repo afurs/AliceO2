@@ -51,6 +51,7 @@ class CollisionTimeRecoTask
                                   const gsl::span<const o2::ft0::ChannelData> inChData,
                                   std::vector<o2::ft0::ChannelDataFloat>& outChData);
   void FinishTask();
+  void print() const;
   void SetTimeCalibObject(o2::ft0::TimeSpectraInfoObject const* timeCalibObject) { mTimeCalibObject = timeCalibObject; };
   void SetSlewingCalibObject(o2::ft0::SlewingCoef const* calibSlew)
   {
@@ -62,6 +63,10 @@ class CollisionTimeRecoTask
  private:
   o2::ft0::TimeSpectraInfoObject const* mTimeCalibObject = nullptr;
   typename o2::ft0::SlewingCoef::SlewingPlots_t mCalibSlew{};
+  std::array<uint64_t, NCHANNELS> mBadFitStat{0};
+  std::array<uint64_t, NCHANNELS> mGoodFitStat{0};
+  std::array<uint64_t, NCHANNELS> mMediumFitStat{0};
+  
 };
 } // namespace ft0
 } // namespace o2

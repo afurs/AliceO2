@@ -95,6 +95,7 @@ void ReconstructionDPL::finaliseCCDB(ConcreteDataMatcher& matcher, void* obj)
 
 void ReconstructionDPL::endOfStream(EndOfStreamContext& ec)
 {
+  mReco.print();
   LOGF(info, "FT0 reconstruction total timing: Cpu: %.3e Real: %.3e s in %d slots",
        mTimer.CpuTime(), mTimer.RealTime(), mTimer.Counter() - 1);
 }
