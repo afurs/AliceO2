@@ -33,6 +33,9 @@ struct Constants {
   constexpr static std::size_t sNCHANNELS_PM = sNPM * sNCHANNELS_PER_PM;                //Number of PM(not LCS) channels
   constexpr static std::size_t sNCHANNELS_PM_LCS = sNPM_LCS * sNCHANNELS_PER_PM;        //Number of PM_LCS channels
   constexpr static std::size_t sNTOTAL_CHANNELS_PM = sNCHANNELS_PM + sNCHANNELS_PM_LCS; //Total number of PM(+LCS) channels
+  constexpr static std::size_t sNCHANNELS = 208;                                  //Total channel number
+  constexpr static std::size_t sNADC = 2;                                  //Total ADCs number
+
 };
 
 } // namespace ft0

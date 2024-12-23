@@ -33,3 +33,9 @@ o2_add_library(FT0Calibration
         PUBLIC_LINK_LIBRARIES
         O2::FT0Calibration
         )
+      o2_add_executable(ft0-amp-time-spectra-processor
+        COMPONENT_NAME calibration
+        SOURCES workflow/FT0AmpTimeSpectraProcessor-Workflow.cxx
+        PUBLIC_LINK_LIBRARIES
+        O2::FT0Calibration
+        )
