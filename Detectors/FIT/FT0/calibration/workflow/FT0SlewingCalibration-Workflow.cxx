@@ -12,11 +12,9 @@
 #include "Framework/DataProcessorSpec.h"
 
 #include "CommonUtils/ConfigurableParam.h"
-#include "DataFormatsFT0/SpectraInfoObject.h"
+#include "DataFormatsFT0/SlewingCoef.h"
 #include "FITCalibration/FITCalibrationDevice.h"
-#include "FT0Calibration/FT0TimeOffsetSlotContainer.h"
-
-#include <string>
+#include "FT0Calibration/FT0SlewingSlotContainer.h"
 
 using namespace o2::framework;
 
@@ -34,11 +32,11 @@ void customize(std::vector<o2::framework::ConfigParamSpec>& workflowOptions)
 WorkflowSpec defineDataProcessing(ConfigContext const& config)
 {
   using CalibrationDeviceType = o2::fit::FITCalibrationDevice<float,
-                                                              o2::ft0::FT0TimeOffsetSlotContainer, o2::ft0::TimeSpectraInfoObject>;
+                                                              o2::ft0::FT0SlewingSlotContainer, o2::ft0::SlewingCoef>;
   std::vector<o2::framework::InputSpec> inputs;
   std::vector<o2::framework::OutputSpec> outputs;
-  const o2::header::DataDescription inputDataDescriptor{"TIME_SPECTRA"};
-  const o2::header::DataDescription outputDataDescriptor{"FT0_TIME_CALIB"};
+  const o2::header::DataDescription inputDataDescriptor{"AMP_TIME_SPECTRA"};
+  const o2::header::DataDescription outputDataDescriptor{"FT0_SLEW_CALIB"};
   CalibrationDeviceType::prepareVecInputSpec(inputs, o2::header::gDataOriginFT0, inputDataDescriptor);
   CalibrationDeviceType::prepareVecOutputSpec(outputs, outputDataDescriptor);
 
@@ -51,14 +49,19 @@ WorkflowSpec defineDataProcessing(ConfigContext const& config)
                                                                 o2::base::GRPGeomRequest::None, // geometry
                                                                 inputs);
   o2::framework::DataProcessorSpec dataProcessorSpec{
-    "ft0-time-offset-calib",
+    "ft0-slew-calib",
     inputs,
     outputs,
     o2::framework::AlgorithmSpec{o2::framework::adaptFromTask<CalibrationDeviceType>(ccdbRequest, outputDataDescriptor)},
     o2::framework::Options{
       {"tf-per-slot", o2::framework::VariantType::UInt32, 56000u, {""}},
       {"max-delay", o2::framework::VariantType::UInt32, 3u, {""}},
-      {"dump-to-file", o2::framework::VariantType::String, "", {"Path for dumping results into file"}}}};
+      {"extra-info-per-slot", o2::framework::VariantType::String, "", {"Extra info for time slot(usually for debugging)"}},
+      {"number-bins-y", VariantType::Int, 200, {"Number of bins along Y-axis"}},
+      {"low-edge-y", VariantType::Float, -100.0f, {"Lower edge of first bin along Y-axis"}},
+      {"upper-edge-y", VariantType::Float, 100.0f, {"Upper edge of last bin along Y-axis"}},
+      {"step-bins-x-axis", VariantType::Int, 50, {"Step for variable bin axis production, i.e. number of bins for step i with 2^i bin width"}},
+      {"dump-hists", VariantType::String, "", {"Dump hists into file"}}}};
 
   WorkflowSpec workflow;
   workflow.emplace_back(dataProcessorSpec);

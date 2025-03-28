@@ -11,14 +11,12 @@
 
 #include "FT0Calibration/FT0SlewingSlotContainer.h"
 #include "DataFormatsFT0/CalibParam.h"
-#include "CommonDataFormat/FlatHisto1D.h"
-
 #include <Framework/Logger.h>
+#include <Framework/ConfigParamRegistry.h>
 
 #include "TH1.h"
 #include "TFile.h"
 #include "TFitResult.h"
-
 using namespace o2::ft0;
 
 FT0SlewingSlotContainer::FT0SlewingSlotContainer(std::size_t minEntries) {}
@@ -58,53 +56,54 @@ bool FT0SlewingSlotContainer::hasEnoughEntries() const
     print();
     return true;
   }
+  return true;
 }
 
 void FT0SlewingSlotContainer::fill(const gsl::span<const float>& data)
 {
-  // Per TF procedure
-  const FlatHisto2D_t histView(data);
-  if (mIsFirstTF) {
-    // To make histogram parameters dynamic, depending on TimeSpectraProcessor output
-    mHistogram.init(histView.getNBinsX(), histView.getXMin(), histView.getXMax(), histView.getNBinsY(), histView.getYMin(), histView.getYMax());
-    mIsFirstTF = false;
-  }
-  mHistogram.add(histView);
-  // This part should at the stage `hasEnoughData()` but it is const method
-  for (int iCh = 0; iCh < sNCHANNELS; iCh++) {
-    if (mBitsetGoodChIDs.test(iCh) || mBitsetBadChIDs.test(iCh)) {
-      // No need in checking entries at channels with enough data or at channels which marked as bad in first slot
-      continue;
+  std::size_t startPos = 0;
+  for (int iAdc = 0; iAdc < Constants::sNADC; iAdc++) {
+    for (int iCh = 0; iCh < Constants::sNCHANNELS; iCh++) {
+      startPos = mArrAmpTimeDistribution[iCh][iAdc].addContent(data, startPos);
+      const auto nEntries = mArrAmpTimeDistribution[iAdc][iCh].mHist.GetEntries();
+      mArrEntries[iAdc][iCh] = nEntries;
+      mTotalNevents += nEntries;
+      if (nEntries >= CalibParam::Instance().mMaxEntriesThreshold) {
+        mBitsetGoodChIDs.set(iCh);
+      }
+      const auto totalNCheckedChIDs = mBitsetGoodChIDs.count() + mBitsetBadChIDs.count();
+      if (totalNCheckedChIDs == sNCHANNELS) {
+        mIsReady = true;
+      }
     }
-    auto sliceChID = mHistogram.getSliceY(iCh);
-    FlatHistoValue_t nEntries{};
-    for (auto& en : sliceChID) {
-      nEntries += en;
-    }
-    mArrEntries[iCh] = nEntries;
-    mTotalNevents += nEntries;
-    if (nEntries >= CalibParam::Instance().mMaxEntriesThreshold) {
-      mBitsetGoodChIDs.set(iCh);
-    }
-  }
-  const auto totalNCheckedChIDs = mBitsetGoodChIDs.count() + mBitsetBadChIDs.count();
-  if (totalNCheckedChIDs == sNCHANNELS) {
-    mIsReady = true;
   }
 }
 
 void FT0SlewingSlotContainer::merge(FT0TimeOffsetSlotContainer* prev)
 {
   LOG(info) << "MERGING";
-  if (mIsFirstTF && prev->isFirstTF()) {
-    // nothing to be done
-    return;
-  } else if (mIsFirstTF && !prev->isFirstTF()) {
-    // need to make mHistogram operational first
-    mHistogram.init(prev->getHistogram().getNBinsX(), prev->getHistogram().getXMin(), prev->getHistogram().getXMax(), prev->getHistogram().getNBinsY(), prev->getHistogram().getYMin(), prev->getHistogram().getYMax());
-    mIsFirstTF = false;
-  }
-  *this = *prev;
+  /*
+    if (mIsFirstTF && prev->isFirstTF()) {
+      // nothing to be done
+      return;
+    } else if (mIsFirstTF && !prev->isFirstTF()) {
+  //    mHistogram.init(prev->getHistogram().getNBinsX(), prev->getHistogram().getXMin(), prev->getHistogram().getXMax(), prev->getHistogram().getNBinsY(), prev->getHistogram().getYMin(), prev->getHistogram().getYMax());
+  //    mIsFirstTF = false;
+    }
+  */
+  *this = std::move(*prev);
+  /*
+    if (mCurrentSlot == 0) {
+      // This part should at the stage `hasEnoughData()` but it is const method
+      for (int iCh = 0; iCh < sNCHANNELS; iCh++) {
+        if (mArrEntries[iCh] < CalibParam::Instance().mMinEntriesThreshold) {
+          // If in first slot channel entries below range => set status bad
+          mBitsetBadChIDs.set(iCh);
+        }
+      }
+    }
+    this->print();
+  */
   if (mCurrentSlot == 0) {
     // This part should at the stage `hasEnoughData()` but it is const method
     for (int iCh = 0; iCh < sNCHANNELS; iCh++) {
@@ -114,16 +113,37 @@ void FT0SlewingSlotContainer::merge(FT0TimeOffsetSlotContainer* prev)
       }
     }
   }
-  this->print();
   mCurrentSlot++;
 }
 
-SpectraInfoObject FT0SlewingSlotContainer::getSpectraInfoObject(std::size_t channelID, TList* listHists) const
+void initHists()
+{
+  mNBins = 0;
+  for (int iAdc = 0; iAdc < Constants::sNADC; iAdc++) {
+    for (int iCh = 0; iCh < Constants::sNCHANNELS; iCh++) {
+      const std::string name = fmt::format("hAmpVsTime_ch{}_adc{}", iCh, iAdc);
+      const std::string title = fmt::format("Amp Vs Time channelID {} ADC{}; Amp [ADC]; Time [TDC]", iCh, iAdc);
+      mArrAmpTimeDistribution[iAdc][iCh] = o2::fit::AmpTimeDistribution(name, title, mNbinsY, mMinY, mMaxY, mBinsInStepX, 4095, 0);
+      mNBins += mArrAmpTimeDistribution[iAdc][iCh].mHist->GetNcells();
+    }
+  }
+  mIsHistsReady = true;
+}
+
+void FT0SlewingSlotContainer::initCtx(o2::framework::InitContext& ctx)
+{
+  mNbinsY = ctx.options().get<int>("number-bins-y");
+  mMinY = ctx.options().get<float>("low-edge-y");
+  mMaxY = ctx.options().get<float>("upper-edge-y");
+  mBinsInStep = ctx.options().get<int>("step-bins-x-axis");
+  initHists();
+  // LOG(info) << "Histogram parameters: " << mNbinsY << " " << mMinY << " " << mMaxY;
+}
+SpectraInfoObject FT0SlewingSlotContainer::getSpectraInfoObject(std::unique_ptr<TH1F>& hist) const
 {
   uint32_t statusBits{};
   double minFitRange{0};
   double maxFitRange{0};
-  auto hist = mHistogram.createSliceYTH1F(channelID);
   if (channelID < sNCHANNELS) {
     if (CalibParam::Instance().mRebinFactorPerChID[channelID] > 0) {
       hist->Rebin(CalibParam::Instance().mRebinFactorPerChID[channelID]);
@@ -166,42 +186,17 @@ SpectraInfoObject FT0SlewingSlotContainer::getSpectraInfoObject(std::size_t chan
   return SpectraInfoObject{meanGaus, sigmaGaus, constantGaus, fitChi2, meanHist, rmsHist, stat, statusBits};
 }
 
-TimeSpectraInfoObject FT0SlewingSlotContainer::generateCalibrationObject(long tsStartMS, long tsEndMS, const std::string& extraInfo) const
+SlewingCoefs FT0SlewingSlotContainer::generateCalibrationObject(long tsStartMS, long tsEndMS) const
 {
-  TList* listHists = nullptr;
-  bool storeHists{false};
-  if (extraInfo.size() > 0) {
-    storeHists = true;
-    listHists = new TList();
-    listHists->SetOwner(true);
-    listHists->SetName("output");
-  }
-  TimeSpectraInfoObject calibrationObject;
-  for (unsigned int iCh = 0; iCh < sNCHANNELS; ++iCh) {
-    calibrationObject.mTime[iCh] = getSpectraInfoObject(iCh, listHists);
-  }
-  calibrationObject.mTimeA = getSpectraInfoObject(sNCHANNELS, listHists);
-  calibrationObject.mTimeC = getSpectraInfoObject(sNCHANNELS + 1, listHists);
-  calibrationObject.mSumTimeAC = getSpectraInfoObject(sNCHANNELS + 2, listHists);
-  calibrationObject.mDiffTimeCA = getSpectraInfoObject(sNCHANNELS + 3, listHists);
-  if (storeHists) {
-    const std::string filename = extraInfo + "/histsTimeSpectra" + std::to_string(tsStartMS) + "_" + std::to_string(tsEndMS) + ".root";
-    TFile fileHists(filename.c_str(), "RECREATE");
-    fileHists.WriteObject(listHists, listHists->GetName(), "SingleKey");
-    fileHists.Close();
-    delete listHists;
-  }
+  std::unique_ptr<TList> listHists = std::make_unique<TList>();
+  listHists->SetName("output");
+  listHists->SetOwner(false);
+  bool storeHists{mDumpToFile.size() > 0};
+
+  SlewingCoefs calibrationObject;
   return calibrationObject;
 }
 
 void FT0SlewingSlotContainer::print() const
 {
-  LOG(info) << "Total entries: " << mHistogram.getSum();
-  LOG(info) << "Hist " << mHistogram.getNBinsX() << " " << mHistogram.getXMin() << " " << mHistogram.getXMax() << " " << mHistogram.getNBinsY() << " " << mHistogram.getYMin() << " " << mHistogram.getYMax();
-  LOG(info) << "Number of good channels: " << mBitsetGoodChIDs.count();
-  LOG(info) << "Number of bad channels: " << mBitsetBadChIDs.count();
-  LOG(info) << "Number of pending channels: " << sNCHANNELS - (mBitsetGoodChIDs.count() + mBitsetBadChIDs.count());
-  LOG(info) << "mIsFirstTF " << mIsFirstTF;
-  LOG(info) << "mIsReady " << mIsReady;
-  // QC will do that part
 }

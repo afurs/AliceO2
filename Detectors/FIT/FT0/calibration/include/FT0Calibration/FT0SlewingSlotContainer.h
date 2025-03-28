@@ -15,10 +15,12 @@
 #include <bitset>
 #include <array>
 
-#include "CommonDataFormat/FlatHisto2D.h"
-#include "DataFormatsFT0/SpectraInfoObject.h"
+#include "DataFormatsFT0/SlewingCoef.h"
+#include "DataFormatsFIT/AmpTimeDistribution.h"
+
 #include "DetectorsCalibration/TimeSlotCalibration.h"
 #include "DetectorsCalibration/TimeSlot.h"
+#include "Framework/InitContext.h"
 
 #include "TList.h"
 
@@ -38,18 +40,27 @@ class FT0SlewingSlotContainer final
   FT0SlewingSlotContainer(FT0SlewingSlotContainer&&) = default;
   FT0SlewingSlotContainer& operator=(FT0SlewingSlotContainer&) = default;
   FT0SlewingSlotContainer& operator=(FT0SlewingSlotContainer&&) = default;
+  using AmpTimeDistributionPerADC = std::array<o2::fit::AmpTimeDistribution, Constants::sNCHANNELS>;
+  using AmpTimeDistributionTotal = std::array<AmpTimeDistributionPerADC, Constants::sNADC> typedef std::remove_cvref_t<std::remove_pointer_t<o2::fit::AmpTimeDistribution::Content_t>> Content_t;
   bool hasEnoughEntries() const;
-  void fill(const gsl::span<const float>& data);
-  SpectraInfoObject getSpectraInfoObject(std::size_t channelID, TList* listHists) const;
-  void merge(FT0TimeOffsetSlotContainer* prev);
+  void fill(const gsl::span<const Content_t>& data);
+  void initCtx(o2::framework::InitContext&);
+  void merge(FT0SlewingSlotContainer* prev);
   void print() const;
-  TimeSpectraInfoObject generateCalibrationObject(long tsStartMS, long tsEndMS, const std::string& pathToHists) const;
-  typedef float FlatHistoValue_t;
-  typedef o2::dataformats::FlatHisto2D<FlatHistoValue_t> FlatHisto2D_t;
-  auto getHistogram() const { return mHistogram; }
+  o2::ft0::SlewingCoef generateCalibrationObject(long tsStartMS, long tsEndMS) const;
+
   auto isFirstTF() const { return mIsFirstTF; }
 
  private:
+  bool mIsHistsReady{false};
+  // Options for hist parameters
+  // TODO: obtain from data stream, not from options
+  int mNbinsY{400};
+  float mMinY{-200.};
+  float mMaxY{200.};
+  int mBinsInStep{50};
+  std::array<AmpTimeDistributionPerADC, Constants::sNADC> mArrAmpTimeDistribution;
+
   // Slot number
   uint8_t mCurrentSlot = 0;
   // Status of channels, pending channels = !(good | bad)
@@ -59,12 +70,14 @@ class FT0SlewingSlotContainer final
   bool mIsFirstTF{true};
   // For slot finalizing
   bool mIsReady{false};
+  // Hist init
+  void intHists();
+  std::size_t mNBins{0};
   // Once it is upper than max entry threshold it stops increasing
   std::array<std::size_t, sNCHANNELS> mArrEntries{};
   // Total number of events
   uint64_t mTotalNevents{0};
   // Contains all information about time spectra
-  FlatHisto2D_t mHistogram;
   ClassDefNV(FT0SlewingSlotContainer, 1);
 };
 } // namespace o2::ft0

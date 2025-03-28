@@ -14,7 +14,7 @@
 
 #include <bitset>
 #include <array>
-
+#include "Framework/InitContext.h"
 #include "CommonDataFormat/FlatHisto2D.h"
 #include "DataFormatsFT0/SpectraInfoObject.h"
 #include "DetectorsCalibration/TimeSlotCalibration.h"
@@ -43,13 +43,14 @@ class FT0TimeOffsetSlotContainer final
   SpectraInfoObject getSpectraInfoObject(std::size_t channelID, TList* listHists) const;
   void merge(FT0TimeOffsetSlotContainer* prev);
   void print() const;
-  TimeSpectraInfoObject generateCalibrationObject(long tsStartMS, long tsEndMS, const std::string& pathToHists) const;
+  TimeSpectraInfoObject generateCalibrationObject(long tsStartMS, long tsEndMS) const;
   typedef float FlatHistoValue_t;
   typedef o2::dataformats::FlatHisto2D<FlatHistoValue_t> FlatHisto2D_t;
   auto getHistogram() const { return mHistogram; }
   auto isFirstTF() const { return mIsFirstTF; }
 
  private:
+  void initCtx(o2::framework::InitContext& ctx);
   // Slot number
   uint8_t mCurrentSlot = 0;
   // Status of channels, pending channels = !(good | bad)
@@ -63,6 +64,7 @@ class FT0TimeOffsetSlotContainer final
   std::array<std::size_t, sNCHANNELS> mArrEntries{};
   // Total number of events
   uint64_t mTotalNevents{0};
+  std::string mDumpToFile;
   // Contains all information about time spectra
   FlatHisto2D_t mHistogram;
   ClassDefNV(FT0TimeOffsetSlotContainer, 1);

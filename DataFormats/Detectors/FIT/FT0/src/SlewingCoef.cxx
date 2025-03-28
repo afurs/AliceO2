@@ -9,8 +9,13 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 
-#include "DataFormatsFT0/SlewingCoef.h"
+#include <string>
+#include <map>
+#include <ROOT/RCsvDS.hxx>
 #include <cassert>
+
+#include "DataFormatsFT0/SlewingCoef.h"
+
 using namespace o2::ft0;
 
 SlewingCoef::SlewingPlots_t SlewingCoef::makeSlewingPlots() const
@@ -29,4 +34,29 @@ SlewingCoef::SlewingPlots_t SlewingCoef::makeSlewingPlots() const
     }
   }
   return plots;
+}
+
+void SlewingCoef::fromCSV(const std::string& filepathSlewing, const std::string& filepathOffset)
+{
+  std::map<std::pair<int, int>, double> mapOffsets{}; // std::pair<int, int>{channelID, adc}
+  if (filepathOffset.size() > 0) {
+    auto dfOffset = ROOT::RDF::FromCSV(filepathOffset.c_str(), true, ';', -1LL);
+    dfOffset.Foreach([&mapOffsets](const Long64_t& chID, const Long64_t& adc, const double peak) {
+      mapOffsets.insert({{chID, adc}, peak});
+    },
+                     {"channelID", "ADC", "peak"});
+  }
+  auto dfSlewing = ROOT::RDF::FromCSV(filepathSlewing.c_str(), true, ';', -1LL);
+  dfSlewing.Foreach([this, &mapOffsets](const Long64_t& chID, const Long64_t& adc, const double& x_min,
+                                        const double& y_min, const double& x_max, const double& y_max) {
+    const auto& it = mapOffsets.find({chID, adc});
+    const double offset = 0. ? it == mapOffsets.end() : it->second;
+    auto& pointsX = mSlewingCoefs[adc][chID].first;
+    auto& pointsY = mSlewingCoefs[adc][chID].second;
+    pointsX.emplace_back(x_min);
+    pointsX.emplace_back(x_max);
+    pointsY.emplace_back(y_min - offset);
+    pointsY.emplace_back(y_max - offset);
+  },
+                    {"channelID", "ADC", "x_min", "y_min", "x_max", "y_max"});
 }

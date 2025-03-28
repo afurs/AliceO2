@@ -21,6 +21,8 @@
 #include <array>
 #include <utility>
 
+#include "DataFormatsFIT/AmpTimeDistribution.h"
+
 namespace o2
 {
 namespace ft0
@@ -29,12 +31,18 @@ namespace ft0
 struct SlewingCoef {
   constexpr static int sNCHANNELS = 208;
   constexpr static int sNAdc = 2;
+  typedef o2::fit::AmpTimeDistributionDetector<sNCHANNELS, sNAdc> AmpTimeDistributionFT0_t;
+  SlewingCoef() = default;
+  SlewingCoef(const AmpTimeDistributionFT0_t& ampTimeDistribution);
+  ~SlewingCoef() = default;
+
   using VecPoints_t = std::vector<Double_t>;                                      // Set of points
   using VecPlot_t = std::pair<VecPoints_t, VecPoints_t>;                          // Plot as pair of two set of points
   using VecSlewingCoefs_t = std::array<std::array<VecPlot_t, sNCHANNELS>, sNAdc>; // 0 - adc0, 1 - adc1
   typedef std::array<std::array<TGraph, sNCHANNELS>, sNAdc> SlewingPlots_t;
   VecSlewingCoefs_t mSlewingCoefs{};
   SlewingPlots_t makeSlewingPlots() const;
+  void fromCSV(const std::string& filepathSlewing, const std::string& filepathOffset = "");
   constexpr static const char* getObjectPath()
   {
     return "FT0/Calib/SlewingCoef";

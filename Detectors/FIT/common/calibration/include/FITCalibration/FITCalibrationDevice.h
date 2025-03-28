@@ -16,6 +16,7 @@
 #include "Framework/Task.h"
 #include "Framework/WorkflowSpec.h"
 #include "Framework/DataProcessorSpec.h"
+#include "Framework/InitContext.h"
 #include "Framework/ConfigParamRegistry.h"
 #include "DetectorsRaw/HBFUtils.h"
 #include "Framework/DataRefUtils.h"
@@ -30,7 +31,14 @@ namespace o2::fit
 template <typename InputCalibrationInfoType, typename TimeSlotStorageType, typename CalibrationObjectType>
 class FITCalibrationDevice : public o2::framework::Task
 {
-  //  static constexpr const char* sDEFAULT_CCDB_URL = "http://localhost:8080";
+  template <typename, typename = std::void_t<>>
+  struct has_initCtx : std::false_type {
+  };
+
+  template <typename T>
+  struct has_initCtx<T, std::void_t<decltype(std::declval<T>().initCtx(std::declval<o2::framework::InitContext&>))>> : std::true_type {
+  };
+
   static constexpr const char* sInputDataLabel = "calibData";
   static constexpr const char* sOutputDataLabelCDBPayload = "cdbPayloadFIT";
   static constexpr const char* sOutputDataLabelCDBWrapper = "cdbWrapperFIT";
@@ -46,13 +54,12 @@ class FITCalibrationDevice : public o2::framework::Task
     o2::base::GRPGeomHelper::instance().setRequest(mCCDBRequest);
     auto slotL = context.options().get<uint32_t>("tf-per-slot");
     auto delay = context.options().get<uint32_t>("max-delay");
-    const std::string extraInfo = context.options().get<std::string>("extra-info-per-slot");
     mCalibrator = std::make_unique<CalibratorType>();
-
+    if constexpr (has_initCtx<CalibratorType>::value) {
+      mCalibrator->initCtx(context);
+    }
     mCalibrator->setSlotLength(slotL);
     mCalibrator->setMaxSlotsDelay(delay);
-    mCalibrator->setExtraInfo(extraInfo);
-    //    o2::ccdb::BasicCCDBManager::instance().setURL(sDEFAULT_CCDB_URL);
   }
 
   void run(o2::framework::ProcessingContext& context) final

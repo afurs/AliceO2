@@ -18,7 +18,7 @@
 #include "TH1.h"
 #include "TFile.h"
 #include "TFitResult.h"
-
+#include <Framework/ConfigParamRegistry.h>
 using namespace o2::ft0;
 
 FT0TimeOffsetSlotContainer::FT0TimeOffsetSlotContainer(std::size_t minEntries) {}
@@ -117,6 +117,10 @@ void FT0TimeOffsetSlotContainer::merge(FT0TimeOffsetSlotContainer* prev)
   this->print();
   mCurrentSlot++;
 }
+void FT0TimeOffsetSlotContainer::initCtx(o2::framework::InitContext& ctx)
+{
+  mDumpToFile = ctx.options().get<std::string>("dump-to-file");
+}
 
 SpectraInfoObject FT0TimeOffsetSlotContainer::getSpectraInfoObject(std::size_t channelID, TList* listHists) const
 {
@@ -166,11 +170,11 @@ SpectraInfoObject FT0TimeOffsetSlotContainer::getSpectraInfoObject(std::size_t c
   return SpectraInfoObject{meanGaus, sigmaGaus, constantGaus, fitChi2, meanHist, rmsHist, stat, statusBits};
 }
 
-TimeSpectraInfoObject FT0TimeOffsetSlotContainer::generateCalibrationObject(long tsStartMS, long tsEndMS, const std::string& extraInfo) const
+TimeSpectraInfoObject FT0TimeOffsetSlotContainer::generateCalibrationObject(long tsStartMS, long tsEndMS) const
 {
   TList* listHists = nullptr;
   bool storeHists{false};
-  if (extraInfo.size() > 0) {
+  if (mDumpToFile.size() > 0) {
     storeHists = true;
     listHists = new TList();
     listHists->SetOwner(true);
@@ -185,7 +189,7 @@ TimeSpectraInfoObject FT0TimeOffsetSlotContainer::generateCalibrationObject(long
   calibrationObject.mSumTimeAC = getSpectraInfoObject(sNCHANNELS + 2, listHists);
   calibrationObject.mDiffTimeCA = getSpectraInfoObject(sNCHANNELS + 3, listHists);
   if (storeHists) {
-    const std::string filename = extraInfo + "/histsTimeSpectra" + std::to_string(tsStartMS) + "_" + std::to_string(tsEndMS) + ".root";
+    const std::string filename = mDumpToFile + "/histsTimeSpectra" + std::to_string(tsStartMS) + "_" + std::to_string(tsEndMS) + ".root";
     TFile fileHists(filename.c_str(), "RECREATE");
     fileHists.WriteObject(listHists, listHists->GetName(), "SingleKey");
     fileHists.Close();

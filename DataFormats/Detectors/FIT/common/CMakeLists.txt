@@ -13,6 +13,7 @@ o2_add_library(DataFormatsFIT
   SOURCES src/RawEventData.cxx
           src/Triggers.cxx
           src/RawDataMetric.cxx
+          src/AmpTimeDistribution.cxx
   PUBLIC_LINK_LIBRARIES O2::CommonDataFormat
                         O2::DetectorsCommonDataFormats
                         O2::CCDB)
@@ -22,4 +23,6 @@ o2_target_root_dictionary(DataFormatsFIT
           include/DataFormatsFIT/LookUpTable.h
           include/DataFormatsFIT/Triggers.h
           include/DataFormatsFIT/ChannelData.h
-          include/DataFormatsFIT/Digit.h)
+          include/DataFormatsFIT/Digit.h
+          include/DataFormatsFIT/AmpTimeDistribution.h
+          )

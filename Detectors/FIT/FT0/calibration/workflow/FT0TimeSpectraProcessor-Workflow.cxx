@@ -137,7 +137,8 @@ WorkflowSpec defineDataProcessing(ConfigContext const& cfgc)
     AlgorithmSpec{adaptFromTask<o2::ft0::FT0TimeSpectraProcessor>()},
     Options{{"number-bins", VariantType::Int, 400, {"Number of bins along Y-axis"}},
             {"low-edge", VariantType::Float, -200.0f, {"Lower edge of first bin along Y-axis"}},
-            {"upper-edge", VariantType::Float, 200.0f, {"Upper edge of last bin along Y-axis"}}}};
+            {"upper-edge", VariantType::Float, 200.0f, {"Upper edge of last bin along Y-axis"}},
+            {"dump-to-file", o2::framework::VariantType::String, "", {"Path for dumping results into file"}}}};
 
   WorkflowSpec workflow;
   workflow.emplace_back(dataProcessorSpec);
